@@ -1,0 +1,359 @@
+---
+title: "Bayes Final Project"
+date: "11/23/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+rm(list = ls())
+knitr::opts_chunk$set(echo = T)
+knitr::opts_chunk$set(fig.show='hold')
+knitr::opts_chunk$set(results='hold')
+
+set.seed(3457327)
+```
+
+```{r libraries}
+
+library(ggridges)
+library(ggplot2)
+library(rstanarm)
+library(brms)
+library(knitr)
+
+```
+
+```{r functions}
+# https://r.789695.n4.nabble.com/Suppressing-output-e-g-from-cat-td859876.html
+quiet <- function(x) { 
+  sink(tempfile())
+  on.exit(sink())
+  invisible(force(x))
+}
+```
+
+
+
+# Input Data
+
+```{r}
+marathon.data = read.csv("marathon.csv")
+  #read.csv(paste(dataDir,"marathon.csv", sep = ""))
+
+#marathon.data$X = NULL
+#marathon.data$name = NULL
+
+marathon.data$age = marathon.data$year - marathon.data$yob
+
+marathon.data = marathon.data[marathon.data$age < 100,]
+
+marathon.data = marathon.data[(marathon.data$netTime > 1500 & marathon.data$clockTime > 1500),]
+
+#marathon.data[(marathon.data$ageClass == "0"),] = NULL
+
+head(marathon.data)
+
+summary(marathon.data)
+
+```
+
+# view dists based on year
+
+```{r}
+# ggplot(data=marathon.data, aes(x=netTime, y=year, fill=year)) + 
+#   geom_density_ridges() + 
+#   theme_ridges() + 
+#   geom_vline(xintercept = 7200) + 
+#   theme(legend.position = "none")
+```
+
+## Input second data
+
+```{r}
+marathon2.data = na.omit(read.csv("marathon2.csv"))
+
+marathon2.data$age = marathon2.data$year - marathon2.data$yob
+
+marathon2.data = marathon2.data[marathon2.data$age < 100,]
+
+marathon2.data = marathon2.data[(marathon2.data$netTime > 1500 & marathon2.data$clockTime > 1500),]
+
+head(marathon2.data)
+```
+
+
+
+
+
+# get elite data
+
+we are defining elite times as 
+
+```{r}
+
+```
+
+
+# look just at 2013 data
+
+```{r}
+marathon.2013.data = marathon2.data[marathon2.data$year == 2013,]
+
+norm.seq = seq(from = min(marathon.2013.data$netTime),
+               to = max(marathon.2013.data$netTime),
+               by = 5)
+
+hist(marathon.2013.data$netTime, breaks = 35, xlab = "netTime", main = "Hist of netTime", freq = F)
+lines(norm.seq,
+      dnorm(norm.seq, 
+            mean = mean(marathon.2013.data$netTime), 
+            sd = sd(marathon.2013.data$netTime)), 
+      col = "red")
+
+
+
+```
+
+
+```{r}
+hist(marathon.2013.data$netTime[marathon.2013.data$netTime<14000], breaks = 35, freq = F)
+
+hist(log(log(marathon.2013.data$netTime[marathon.2013.data$netTime<14000])), breaks = 35, freq = F)
+```
+
+```{r}
+hist(marathon.data$netTime, breaks = 35, xlab = "netTime", main = "Hist of netTime", freq = F)
+lines(norm.seq,
+      dnorm(norm.seq, 
+            mean = mean(marathon.data$netTime), 
+            sd = sd(marathon.data$netTime)), 
+      col = "red")
+```
+
+```{r}
+hist(log(marathon.data$netTime), breaks = 35, xlab = "netTime", main = "Hist log(netTime)", freq = F)
+lines(log(norm.seq),
+      dnorm(log(norm.seq), 
+            mean = mean(log(marathon.data$netTime)),
+            sd = sd(log(marathon.data$netTime))), 
+      col = "red")
+ 
+# abline(v = log(2*60*60), #log(2 hours)
+#        col = "green")
+
+
+
+
+```
+
+The log of the marathon times are approximately normal
+
+
+
+
+# Model 1
+
+```{r}
+
+
+
+stan.model.1 = quiet(stan_glm(netTime ~ age + I(age^2) + log(age) + region + sex, 
+                        data = marathon.2013.data,
+                        iter = 3000))
+
+
+
+# brms.model.1 = brm(netTime ~ age + I(age^2) + log(age) + region + sex,
+#                    data = marathon.2013.data)
+
+stan.model.1.post.beta = posterior_samples(stan.model.1)
+
+kable(head(stan.model.1.post.beta))
+
+
+
+cat("\n\n\n\n")
+summary(stan.model.1)
+
+
+plot(stan.model.1, plotfun = "areas", prob = 0.9,
+     pars = c( "(Intercept)"))
+
+plot(stan.model.1, plotfun = "areas", prob = 0.9,
+     pars = c( "age"))
+
+plot(stan.model.1, plotfun = "areas", prob = 0.9,
+     pars = c( "I(age^2)"))
+
+plot(stan.model.1, plotfun = "areas", prob = 0.9,
+     pars = c( "log(age)"))
+
+plot(stan.model.1, plotfun = "areas", prob = 0.9,
+     pars = c( "regionAmericas","regionAsia","regionEurope","regionOceania"))
+
+plot(stan.model.1, plotfun = "areas", prob = 0.9,
+     pars = c( "sexW"))
+
+plot(stan.model.1, plotfun = "areas", prob = 0.9,
+     pars = c( "sigma"))
+
+plot(stan.model.1, prob = 0.9)
+
+
+
+#kable(head(posterior_samples(stan.model.1)))
+
+```
+
+
+# Model 2
+
+```{r}
+stan.model.2 = quiet(stan_glm(log(netTime) ~ log(age) + region + sex,
+                        data = marathon.2013.data,
+                        iter = 3000))
+
+# brms.model.2 = brm(log(netTime) ~ log(age) + region + sex,
+#                    data = marathon.2013.data)
+
+stan.model.2.post.beta = posterior_samples(stan.model.2)
+
+kable(head(stan.model.2.post.beta))
+
+cat("\n\n\n\n")
+summary(stan.model.2)
+
+plot(stan.model.2, plotfun = "areas", prob = 0.9,
+     pars = c( "(Intercept)"))
+
+plot(stan.model.2, plotfun = "areas", prob = 0.9,
+     pars = c( "sexW","log(age)"))
+
+plot(stan.model.2, plotfun = "areas", prob = 0.9,
+     pars = c( "log(age)"))
+
+plot(stan.model.2, plotfun = "areas", prob = 0.9,
+     pars = c( "regionAmericas","regionAsia","regionEurope","regionOceania"))
+
+
+plot(stan.model.2, plotfun = "areas", prob = 0.9,
+     pars = c( "sexW"))
+
+plot(stan.model.2, plotfun = "areas", prob = 0.9,
+     pars = c( "sigma"))
+
+
+plot(stan.model.2, prob = 0.9)
+
+# "sexW","log(age)"
+```
+
+
+# Calculate probabilities
+
+Eliud Kipchoge was 34 and is From Kenya which is consider part of the African region. 2 hours $\equiv$ 7200 seconds. $log(7200) = `r round(log(7200),2)`$.
+
+## Model 1
+
+```{r}
+expectations.model.1 = as.vector(as.matrix(stan.model.1.post.beta[1] +
+                                              34*stan.model.1.post.beta[2] +
+                                              34^2*stan.model.1.post.beta[3] +
+                                              log(34)*stan.model.1.post.beta[4]))
+
+
+
+
+model.1.prob.under2 = pnorm(rep(7200, length(expectations.model.1)), 
+                    mean = expectations.model.1,
+                    sd = stan.model.1.post.beta$sigma)
+
+# quantile(model.1.prob.under2, probs = c(0.025,0.5,0.975))
+
+# mean: 0.003900696
+# 2.5%  0.0002539497
+# 50%   0.0024818071
+# 97.5% 0.0155373675 
+
+# posterior1.extract <- rstan::extract(stan.model.1, inc_warmup = TRUE, permuted = FALSE)
+
+model.1.alpha = (((mean(model.1.prob.under2)*(1-mean(model.1.prob.under2))) / var(model.1.prob.under2)) - 1) * mean(model.1.prob.under2)
+
+model.1.beta = (((mean(model.1.prob.under2)*(1-mean(model.1.prob.under2))) / var(model.1.prob.under2)) - 1) * (1-mean(model.1.prob.under2))
+
+hist(model.1.prob.under2, freq = F, breaks = 50, main = "histogram of probabilities", ylim = c(0, 250), xlab = "P(under 2 hr marathon)")
+lines(density(model.1.prob.under2), col = "blue")
+lines(seq(0,1,by=0.001),
+      dbeta(seq(0,1,by=0.001), 
+            shape1 = model.1.alpha, 
+            shape2 = model.1.beta),
+      col = "red")
+legend("topright", legend = c("kernel density","beta MOME"), lty = c(1,1), col = c("blue","red"))
+
+
+hist(stan.model.1$residuals, breaks = 50, main = "histogram of residuals", freq = F, xlab = "residual")
+lines(density(stan.model.1$residuals), col = "blue")
+lines(seq(min(stan.model.1$residuals),max(stan.model.1$residuals), by = 0.5),
+      dnorm(seq(min(stan.model.1$residuals),max(stan.model.1$residuals), by = 0.5),
+            mean = mean(stan.model.1$residuals),
+            sd = sd(stan.model.1$residuals)),
+      col = "red")
+legend("topright", legend = c("kernel density","beta MOME"), lty = c(1,1), col = c("blue","red"), cex = 0.8)
+
+```
+
+
+
+## Model 2
+
+```{r}
+expectations.model.2 = as.vector(as.matrix(stan.model.2.post.beta[1] + log(34)*stan.model.2.post.beta[2]))
+
+model.2.prob.under2 = pnorm(rep(log(7200), length(expectations.model.2)),
+                            mean = expectations.model.2,
+                            sd = stan.model.2.post.beta$sigma)
+
+# quantile(model.2.prob.under2, probs = c(0.025,0.5,0.975))
+
+# mean: 0.000102
+# 2.5%  2.922039e-06
+# 50%   4.693792e-05
+# 97.5% 5.511935e-04
+
+# posterior2.extract <- rstan::extract(stan.model.2, inc_warmup = TRUE, permuted = FALSE)
+
+model.2.alpha = (((mean(model.2.prob.under2)*(1-mean(model.2.prob.under2))) / var(model.2.prob.under2)) - 1) * mean(model.2.prob.under2)
+
+model.2.beta = (((mean(model.2.prob.under2)*(1-mean(model.2.prob.under2))) / var(model.2.prob.under2)) - 1) * (1-mean(model.2.prob.under2))
+
+hist(model.2.prob.under2, freq = F, breaks = 50, main = "histogram of probabilities", xlab = "P(under 2 hr marathon)", ylim = c(0,10500))
+lines(density(model.2.prob.under2), col = "blue")
+lines(seq(0,0.003,by=0.00001),
+      dbeta(seq(0,0.003,by=0.00001), 
+            shape1 = model.2.alpha, 
+            shape2 = model.2.beta),
+      col = "red")
+legend("topright", legend = c("kernel density","beta MOME"), lty = c(1,1), col = c("blue","red"))
+
+
+
+hist(stan.model.2$residuals, breaks = 50, main = "histogram of residuals", freq = F, xlab = "residual")
+lines(density(stan.model.2$residuals), col = "blue")
+lines(seq(min(stan.model.2$residuals),max(stan.model.2$residuals), by = 0.005),
+      dnorm(seq(min(stan.model.2$residuals),max(stan.model.2$residuals), by = 0.005),
+            mean = mean(stan.model.2$residuals),
+            sd = sd(stan.model.2$residuals)),
+      col = "red")
+legend("topright", legend = c("kernel density","normal density"), lty = c(1,1), col = c("blue","red"), cex = 0.8)
+
+
+```
+
+
+
+
+
+
+```{r RAC, include=F}
+#Hi
+```
