@@ -1,0 +1,780 @@
+---
+title: "Power Study"
+date: "3/20/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+rm(list = ls())
+knitr::opts_chunk$set(echo = T,
+                      warning = F,
+                      message = F,
+                      fig.show='hold',
+                      results='hold')
+options(digits=3)
+set.seed(1142646268)
+```
+
+# Libraries
+
+```{r Libraries, message = F}
+library(tidyverse)
+library(readxl)
+library(car)
+library(MVN)
+```
+
+# Functions
+
+```{r quiet}
+# https://r.789695.n4.nabble.com/Suppressing-output-e-g-from-cat-td859876.html
+quiet <- function(x) { 
+  sink(tempfile())
+  on.exit(sink())
+  invisible(force(x))
+}
+```
+
+```{r printMatrixAsLaTeX}
+printMatrixAsLaTeX = function(A){
+  #this function takes in a matrix input and will output a string that can 
+  #be used to put a matrix into latex form
+  m = nrow(A)
+  #n = ncol(A)
+  
+  latex.list = list()
+  
+  for(i in 1:m){
+    latex.list[[i]] = paste0(paste0(A[i,], collapse = " & "),"\\\\")
+  }
+  
+  begin = "\\begin{bmatrix}"
+  numbers = paste0(unlist(latex.list), collapse = "")
+  end = "\\end{bmatrix}"
+  str.out = paste0(begin, numbers, end, collapse = "")
+  #cat(begin, numbers, end, sep = "")
+  
+  return(str.out)
+}
+```
+
+$$
+Odds = \frac{P}{1-P}
+$$
+
+```{r Odds}
+Odds = function(p){
+  return(p/(1-p))
+}
+```
+
+```{r logOdds}
+logOdds = function(p){
+  return(log(p/(1-p)))
+}
+```
+
+
+
+```{r Data}
+period1 = read_excel("stock portfolio performance data set.xlsx", 
+                     sheet = "1st period", skip = 1)
+period2 = read_excel("stock portfolio performance data set.xlsx", 
+                     sheet = "2nd period", skip = 1)
+period3 = read_excel("stock portfolio performance data set.xlsx", 
+                     sheet = "3rd period", skip = 1)
+period4 = read_excel("stock portfolio performance data set.xlsx", 
+                     sheet = "4th period", skip = 1)
+
+allData = rbind(period1,period2,period3,period4) %>% select(-ID)
+allData = allData[,c(1:6, 13:18)]
+names(allData) = c(paste0("X",1:6), paste0("Y",1:6))
+```
+
+- X1 - Large B/P
+
+- X2 - Large ROE
+
+- X3 - Large S/P
+
+- X4 - Large Return Rate in the last quarter
+
+- X5 - Large Market Value
+
+- X6 - Small systematic Risk
+
+- Y1 - Annual Return
+
+- Y2 - Excess Return
+
+- Y3 - Systematic Risk
+
+- Y4 - Total Risk
+
+- Y5 - Abs. Win Rate
+
+- Y6 - Rel. Win Rate
+
+
+# Initial Histograms
+
+```{r}
+allData %>% ggplot(aes(x = Y1)) + 
+  geom_histogram(aes(y = ..density..),color="black", fill="white") +
+  geom_density() +
+  labs(title = "Y1 - Annual Return") +
+  theme_bw()
+```
+
+
+
+
+```{r}
+allData %>% ggplot(aes(x = Y2)) + 
+  geom_histogram(aes(y = ..density..),color="black", fill="white") +
+  geom_density() +
+  labs(title = "Y2 - Excess Return") +
+  theme_bw()
+```
+
+
+```{r}
+allData %>% ggplot(aes(x = Y3)) + 
+  geom_histogram(aes(y = ..density..),color="black", fill="white") +
+  geom_density() +
+  labs(title = "Y3 - Systematic Risk") +
+  theme_bw()
+```
+
+```{r}
+allData %>% ggplot(aes(x = Y4)) + 
+  geom_histogram(aes(y = ..density..),color="black", fill="white") +
+  geom_density() +
+  labs(title = "Y4 - Total Risk") +
+  theme_bw()
+```
+
+```{r}
+allData %>% ggplot(aes(x = Y5)) + 
+  geom_histogram(aes(y = ..density..),color="black", fill="white") +
+  geom_density() +
+  labs(title = "Y5 - Abs. Win Rate ") + 
+  theme_bw()
+```
+
+```{r}
+allData %>% ggplot(aes(x = Y6)) + 
+  geom_histogram(aes(y = ..density..),color="black", fill="white") +
+  geom_density() +
+  labs(title = "Y6 - Rel. Win Rate") +
+  theme_bw()
+```
+
+# Odds transformation
+
+```{r}
+allData = allData %>% mutate(
+  Z1 = Odds(Y1), 
+  Z2 = Odds(Y2), 
+  Z3 = Odds(Y3), 
+  Z4 = Odds(Y4), 
+)
+
+Zdata = allData[,paste0("Z",1:4)]
+p1 = powerTransform(Zdata$Z1)$start
+p2 = powerTransform(Zdata$Z2)$start
+p3 = powerTransform(Zdata$Z3)$start
+p4 = powerTransform(Zdata$Z4)$start
+
+pall = powerTransform(Zdata)
+
+Zdata = Zdata %>% mutate(Z1 = Z1^0.232,
+                            Z2 = Z2^0.267,
+                            Z3 = Z3^-0.338,
+                            Z4 = Z4^-0.418)
+
+mvn(Zdata, mvnTest = "dh", multivariatePlot = "qq")
+
+```
+
+# Histograms of Z's
+
+```{r}
+Zdata %>% ggplot(aes(x = Z1)) + 
+  geom_histogram(aes(y = ..density..),color="black", fill="white") +
+  geom_density() +
+  labs(title = "Z1 - Annual Return") + 
+  theme_light()
+```
+
+
+```{r}
+Zdata %>% ggplot(aes(x = Z2)) + 
+  geom_histogram(aes(y = ..density..),color="black", fill="white") +
+  geom_density() +
+  labs(title = "Z2 - Excess Return") +
+  theme_linedraw()
+```
+
+
+```{r}
+Zdata %>% ggplot(aes(x = Z3)) + 
+  geom_histogram(aes(y = ..density..),color="black", fill="white") +
+  geom_density() +
+  labs(title = "Z3 - Systematic Risk") +
+  theme_linedraw()
+```
+
+```{r}
+Zdata %>% ggplot(aes(x = Z4)) + 
+  geom_histogram(aes(y = ..density..),color="black", fill="white") +
+  geom_density() +
+  labs(title = "Z4 - Total Risk") +
+  theme_linedraw()
+```
+
+
+
+
+
+
+```{r fixZ4}
+# hist(allData$`Annual Return...8`)
+
+# df = allData$Y5 %>% as.tibble() %>% 
+#   mutate(value2 = (value))
+#   #mutate(value2 = log(beta(value,value)))
+# 
+# df %>% ggplot(aes(x = value2)) + 
+#   geom_histogram(aes(y = ..density..),color="black", fill="white") +
+#   geom_density(aes(x = value2)) +
+#   stat_function(fun = dnorm,
+#                 args = list(mean = mean(df$value2),
+#                             sd = sd(df$value2)),
+#                 col = "#1b98e0") +
+#   labs(title = "Z5")
+
+#shapiro.test(df$value2)
+```
+
+# Correlation plots
+
+```{r corrplots}
+library(corrplot)
+
+initCor = cor(allData[,c(paste0("X",1:6), paste0("Y",1:4))])
+
+col = colorRampPalette(c("red", "black", "blue"))(10)
+corrplot(initCor, method = "number", type = "upper", col = col, bg="lightgray")
+```
+
+# Using updated data
+
+```{r}
+transformData = cbind(allData[paste0("X",1:6)], Zdata) %>% as.tibble()
+```
+
+```{r}
+transformCor = cor(transformData)
+
+col = colorRampPalette(c("red", "black", "blue"))(10)
+corrplot(transformCor, method = "number", type = "upper", col = col, bg="lightgray")
+```
+
+# Initial Linear Models
+
+```{r}
+lm1 = lm(cbind(Z1,Z2,Z3,Z4) ~ (X1+X2+X3+X4+X5+X6)-1, 
+          data = transformData)
+summary(lm1)
+```
+
+
+```{r}
+lm2 = lm(cbind(Z1,Z2,Z3,Z4) ~ (X1+X2+X3+X4+X5+X6)^2-1, 
+          data = transformData)
+summary(lm2)
+```
+
+```{r}
+lm3 = lm(cbind(Z1,Z2,Z3,Z4) ~ (X1+X2+X3+X4+X5+X6)^3-1, 
+          data = transformData)
+summary(lm3)
+```
+
+
+
+
+
+# Bootstraps
+
+```{r}
+# for(i in 1:5){
+#   for(j in (i+1):6){
+#     cat("X",i,"X",j,"\n",sep = '')
+#   }
+# }
+
+# for(i in 1:4){
+#   for(j in (i+1):5){
+#     for(k in (j+1):6){
+#       cat("X",i,"X",j,"X",k," = ","X",i,"*X",j,"*X",k,",\n",sep = '')
+#     }
+#   }
+# }
+
+```
+
+## LR1
+
+this code is checking whether or not to keep 3rd order pairs
+
+```{r LRratio1}
+bootstrapData = transformData %>% mutate(
+  X1X2 = X1*X2, X1X3 = X1*X3, X1X4 = X1*X4, X1X5 = X1*X5, X1X6 = X1*X6,
+  X2X3 = X2*X3, X2X4 = X2*X4, X2X5 = X2*X5, X2X6 = X2*X6, X3X4 = X3*X4,
+  X3X5 = X3*X5, X3X6 = X3*X6, X4X5 = X4*X5, X4X6 = X4*X6, X5X6 = X5*X6,
+  X1X2X3 = X1*X2*X3, X1X2X4 = X1*X2*X4, X1X2X5 = X1*X2*X5,
+  X1X2X6 = X1*X2*X6, X1X3X4 = X1*X3*X4, X1X3X5 = X1*X3*X5,
+  X1X3X6 = X1*X3*X6, X1X4X5 = X1*X4*X5, X1X4X6 = X1*X4*X6,
+  X1X5X6 = X1*X5*X6, X2X3X4 = X2*X3*X4, X2X3X5 = X2*X3*X5,
+  X2X3X6 = X2*X3*X6, X2X4X5 = X2*X4*X5, X2X4X6 = X2*X4*X6,
+  X2X5X6 = X2*X5*X6, X3X4X5 = X3*X4*X5, X3X4X6 = X3*X4*X6,
+  X3X5X6 = X3*X5*X6, X4X5X6 = X4*X5*X6
+)
+
+n = nrow(bootstrapData)
+
+Z = bootstrapData %>% select(Z1,Z2,Z3,Z4) %>% as.matrix()
+m = ncol(Z) # number of responses
+
+X = bootstrapData %>% select(-c(Z1,Z2,Z3,Z4)) %>% as.matrix()
+r = ncol(X) # number of predictors (no constant involved)
+
+b = solve(t(X) %*% X) %*% t(X) %*% Z
+pred = X %*% b
+resid = Z - pred
+
+
+variables_to_test <- c(
+  "X1X2X3",
+  "X1X2X4",
+  "X1X2X5",
+  "X1X2X6",
+  "X1X3X4",
+  "X1X3X5",
+  "X1X3X6",
+  "X1X4X5",
+  "X1X4X6",
+  "X1X5X6",
+  "X2X3X4",
+  "X2X3X5",
+  "X2X3X6",
+  "X2X4X5",
+  "X2X4X6",
+  "X2X5X6",
+  "X3X4X5",
+  "X3X4X6",
+  "X3X5X6",
+  "X4X5X6"
+)
+variables_to_keep = setdiff(colnames(X), variables_to_test)
+q = length(variables_to_keep)
+grp1 = rownames(b) %in% variables_to_keep
+grp2 = rownames(b) %in% variables_to_test
+
+estSigma = t(resid) %*% resid / n
+
+b_grp1 = solve(t(X[ , grp1]) %*% X[ , grp1]) %*% t(X[ , grp1]) %*% Z
+pred_grp1 = X[ , grp1] %*% b_grp1
+resid_grp1 = Z - pred_grp1
+
+estSigma1 = t(resid_grp1) %*% resid_grp1 / n
+LR_test_statistic = -n * (log(det(estSigma)) - log(det(estSigma1)))
+# Approximate likelihood ratio test statistic:
+approx_LR_test_statistic = 
+  -(n - r - 1 - 0.5 * (m - r + q + 1)) * (log(det(estSigma)) - 
+                                            log(det(estSigma1)))
+cat("chiS1\n")
+# Reject?
+ifelse(approx_LR_test_statistic > qchisq(0.95, m * (r - q)), "Reject H0", "Don't reject H0")
+
+# The corresponding p-value is:
+pchisq(approx_LR_test_statistic, df = m * (r - q), lower.tail = FALSE)
+
+cat("F stat\n")
+
+# Or using the approximate F-statistic:
+W <- det(estSigma) / det(estSigma1)
+
+h <- length(variables_to_test)  
+# h = q' = r - q; see corrected slide 25 in notes for Chapter 7
+
+d1 <- (n - r - 1) - 0.5 * (m - h + 1)
+d2 <- (m * h - 2)/4
+d3 <- m^2 + h^2 - 5
+d3 <- if (d3 > 0) { 
+  sqrt(((m * h)^2 - 4) / d3)
+} else { 1 }
+
+F_approx_stat <- ((W^(-1 / d3) - 1) * (d1 * d3 - 2 * d2)) / (m  * h)
+
+# The corresponding p-value is:
+pf(F_approx_stat, m * h, d1 * d3 - 2 * d2, lower.tail = FALSE)
+
+```
+
+## check LR1 assumptions
+
+```{r}
+# Bootstrap study:
+n <- nrow(bootstrapData)
+
+S <- 500
+LR_stat_sample <- numeric(S)
+
+s <- 1
+total = 0
+while(s <= S){
+  total = total+1
+  try({
+    bootstrap_sample_idx <- sample(n, replace = TRUE)
+    bstp_df <- bootstrapData[bootstrap_sample_idx, ]
+    
+    Y <- bstp_df %>% select(Z1,Z2,Z3,Z4) %>% as.matrix()
+    m <- ncol(Y)
+
+    variables_to_test <- c(
+      "X1X2X3",
+      "X1X2X4",
+      "X1X2X5",
+      "X1X2X6",
+      "X1X3X4",
+      "X1X3X5",
+      "X1X3X6",
+      "X1X4X5",
+      "X1X4X6",
+      "X1X5X6",
+      "X2X3X4",
+      "X2X3X5",
+      "X2X3X6",
+      "X2X4X5",
+      "X2X4X6",
+      "X2X5X6",
+      "X3X4X5",
+      "X3X4X6",
+      "X3X5X6",
+      "X4X5X6"
+    )
+    
+    variables_to_keep <- setdiff(colnames(Z), variables_to_test)
+    grp1 <- rownames(b) %in% variables_to_keep
+    grp2 <- rownames(b) %in% variables_to_test
+    
+    Z <- bootstrapData %>% select(-c(Z1,Z2,Z3,Z4)) %>% as.matrix()
+    
+    Z[ , grp2] <- Z[sample(n), grp2]   # shuffle rows of tested predictors
+    
+    r <- ncol(Z)
+    
+    b <- solve(t(Z) %*% Z) %*% t(Z) %*% Y
+    pred <- Z %*% b
+    resid <- Y - pred
+    
+    estSigma <- t(resid) %*% resid / n
+    
+    b_grp1 <- solve(t(Z[ , grp1]) %*% Z[ , grp1]) %*% t(Z[ , grp1]) %*% Y
+    estSigma1 <- t(Y - Z[ , grp1] %*% b_grp1) %*% (Y - Z[ , grp1] %*% b_grp1) / n
+    
+    LR_stat_sample[s] <- det(estSigma) / det(estSigma1)
+    s <- s + 1
+    
+  })
+}
+
+# p-value for bootstrap sample:
+sum( LR_stat_sample < W ) / S
+hist(LR_stat_sample)
+abline(v = W)
+```
+
+```{r}
+# Rescale the bootstrap sample to the approximate F scale:
+h <- length(variables_to_test)
+d1 <- (n - r - 1) - 0.5 * (m - h + 1)
+d2 <- (m * h - 2)/4
+d3 <- m^2 + h^2 - 5
+d3 <- if (d3 > 0) { 
+  sqrt(((m * h)^2 - 4) / d3)
+} else { 1 }
+
+F_approx_stat <- ((LR_stat_sample^(-1 / d3) - 1) * (d1 * d3 - 2 * d2)) / (m  * h)
+
+crit_F <- ((W^(-1 / d3) - 1) * (d1 * d3 - 2 * d2)) / (m  * h)
+
+hist(F_approx_stat, freq = FALSE, breaks = 40, main = "Bootstrap and F Approximation For 3rd Order")
+rng <- range(F_approx_stat)
+x <- seq(rng[1], rng[2], length.out = 100)
+lines(x, df(x, m * h, d1 * d3 - 2 * d2))
+abline(v = crit_F)
+```
+
+
+```{r}
+# Rescale the bootstrap sample to the approximate chi squared scale:
+chi_sq_approx_stat <- -(n - r - 1 - 0.5 * (m - r + q + 1)) * log(LR_stat_sample)
+
+crit_chisq  <- -(n - r - 1 - 0.5 * (m - r + q + 1)) * log(W)
+
+hist(chi_sq_approx_stat, freq = FALSE, breaks = 40, main = "Bootstrap and chi-square Approximation for 3rd Order")
+rng <- range(chi_sq_approx_stat)
+x <- seq(rng[1], rng[2], length.out = 100)
+lines(x, dchisq(x, m * (r - q)))
+abline(v = crit_chisq)
+```
+
+
+## LR2
+
+This code is to check for certain 2nd order pairs
+
+```{r LRratio2}
+# bootstrapData = transformData %>% mutate(
+#   X1X2 = X1*X2, X1X3 = X1*X3, X1X4 = X1*X4, X1X5 = X1*X5, X1X6 = X1*X6,
+#   X2X3 = X2*X3, X2X4 = X2*X4, X2X5 = X2*X5, X2X6 = X2*X6, X3X4 = X3*X4,
+#   X3X5 = X3*X5, X3X6 = X3*X6, X4X5 = X4*X5, X4X6 = X4*X6, X5X6 = X5*X6,
+#   X1X2X3 = X1*X2*X3, X1X2X4 = X1*X2*X4, X1X2X5 = X1*X2*X5,
+#   X1X2X6 = X1*X2*X6, X1X3X4 = X1*X3*X4, X1X3X5 = X1*X3*X5,
+#   X1X3X6 = X1*X3*X6, X1X4X5 = X1*X4*X5, X1X4X6 = X1*X4*X6,
+#   X1X5X6 = X1*X5*X6, X2X3X4 = X2*X3*X4, X2X3X5 = X2*X3*X5,
+#   X2X3X6 = X2*X3*X6, X2X4X5 = X2*X4*X5, X2X4X6 = X2*X4*X6,
+#   X2X5X6 = X2*X5*X6, X3X4X5 = X3*X4*X5, X3X4X6 = X3*X4*X6,
+#   X3X5X6 = X3*X5*X6, X4X5X6 = X4*X5*X6
+# )
+
+bootstrapData = transformData %>% mutate(
+  X1X2 = X1*X2, X1X3 = X1*X3, X1X4 = X1*X4, X1X5 = X1*X5, X1X6 = X1*X6,
+  X2X3 = X2*X3, X2X4 = X2*X4, X2X5 = X2*X5, X2X6 = X2*X6, X3X4 = X3*X4,
+  X3X5 = X3*X5, X3X6 = X3*X6, X4X5 = X4*X5, X4X6 = X4*X6, X5X6 = X5*X6
+)
+
+n = nrow(bootstrapData)
+
+Z = bootstrapData %>% select(Z1,Z2,Z3,Z4) %>% as.matrix()
+m = ncol(Z) # number of responses
+
+X = bootstrapData %>% select(-c(Z1,Z2,Z3,Z4)) %>% as.matrix()
+r = ncol(X) # number of predictors (no constant involved)
+
+b = solve(t(X) %*% X) %*% t(X) %*% Z
+pred = X %*% b
+resid = Z - pred
+
+variables_to_test = c(
+  #"X1X2",#*
+  "X1X3",
+  #"X1X4",#*
+  #"X1X5",#*
+  #X1X6",#* **
+  "X2X3",
+  #"X2X4",#*
+  "X2X5",
+  #"X2X6",#*
+  "X3X4",#*
+  "X3X5",#*
+  "X3X6",
+  "X4X5",
+  "X4X6",#*
+  "X5X6"
+)
+
+variables_to_keep = setdiff(colnames(X), variables_to_test)
+q = length(variables_to_keep)
+grp1 = rownames(b) %in% variables_to_keep
+grp2 = rownames(b) %in% variables_to_test
+
+estSigma = t(resid) %*% resid / n
+
+b_grp1 = solve(t(X[ , grp1]) %*% X[ , grp1]) %*% t(X[ , grp1]) %*% Z
+pred_grp1 = X[ , grp1] %*% b_grp1
+resid_grp1 = Z - pred_grp1
+
+estSigma1 = t(resid_grp1) %*% resid_grp1 / n
+LR_test_statistic = -n * (log(det(estSigma)) - log(det(estSigma1)))
+# Approximate likelihood ratio test statistic:
+approx_LR_test_statistic = 
+  -(n - r - 1 - 0.5 * (m - r + q + 1)) * (log(det(estSigma)) - 
+                                            log(det(estSigma1)))
+
+# Reject?
+ifelse(approx_LR_test_statistic > qchisq(0.95, m * (r - q)), "Reject H0", "Don't reject H0")
+
+# The corresponding p-value is:
+pchisq(approx_LR_test_statistic, df = m * (r - q), lower.tail = FALSE)
+
+
+cat("F stat\n")
+
+# Or using the approximate F-statistic:
+W <- det(estSigma) / det(estSigma1)
+
+h <- length(variables_to_test)  
+# h = q' = r - q; see corrected slide 25 in notes for Chapter 7
+
+d1 <- (n - r - 1) - 0.5 * (m - h + 1)
+d2 <- (m * h - 2)/4
+d3 <- m^2 + h^2 - 5
+d3 <- if (d3 > 0) { 
+  sqrt(((m * h)^2 - 4) / d3)
+} else { 1 }
+
+F_approx_stat <- ((W^(-1 / d3) - 1) * (d1 * d3 - 2 * d2)) / (m  * h)
+
+# The corresponding p-value is:
+pf(F_approx_stat, m * h, d1 * d3 - 2 * d2, lower.tail = FALSE)
+```
+
+## check LR2 assumptions
+
+```{r}
+# Bootstrap study:
+n <- nrow(bootstrapData)
+
+S <- 1000
+LR_stat_sample <- numeric(S)
+
+s <- 1
+total = 0
+while(s <= S){
+  total = total+1
+  try({
+    bootstrap_sample_idx <- sample(n, replace = TRUE)
+    bstp_df <- bootstrapData[bootstrap_sample_idx, ]
+    
+    Y <- bstp_df %>% select(Z1,Z2,Z3,Z4) %>% as.matrix()
+    m <- ncol(Y)
+
+    variables_to_test = c(
+      #"X1X2",#*
+      "X1X3",
+      #"X1X4",#*
+      #"X1X5",#*
+      #X1X6",#* **
+      "X2X3",
+      #"X2X4",#*
+      #"X2X5",
+      #"X2X6",#*
+      "X3X4",#*
+      "X3X5",#*
+      "X3X6",
+      "X4X5",
+      "X4X6",#*
+      "X5X6"
+    )
+    
+    variables_to_keep <- setdiff(colnames(Z), variables_to_test)
+    grp1 <- rownames(b) %in% variables_to_keep
+    grp2 <- rownames(b) %in% variables_to_test
+    
+    Z <- bootstrapData %>% select(-c(Z1,Z2,Z3,Z4)) %>% as.matrix()
+    
+    Z[ , grp2] <- Z[sample(n), grp2]   # shuffle rows of tested predictors
+    
+    r <- ncol(Z)
+    
+    b <- solve(t(Z) %*% Z) %*% t(Z) %*% Y
+    pred <- Z %*% b
+    resid <- Y - pred
+    
+    estSigma <- t(resid) %*% resid / n
+    
+    b_grp1 <- solve(t(Z[ , grp1]) %*% Z[ , grp1]) %*% t(Z[ , grp1]) %*% Y
+    estSigma1 <- t(Y - Z[ , grp1] %*% b_grp1) %*% (Y - Z[ , grp1] %*% b_grp1) / n
+    
+    LR_stat_sample[s] <- det(estSigma) / det(estSigma1)
+    s <- s + 1
+    
+  })
+}
+
+# p-value for bootstrap sample:
+sum( LR_stat_sample < W ) / S
+hist(LR_stat_sample, breaks = 30)
+#abline(v = W)
+```
+
+```{r}
+# Rescale the bootstrap sample to the approximate F scale:
+h <- length(variables_to_test)
+d1 <- (n - r - 1) - 0.5 * (m - h + 1)
+d2 <- (m * h - 2)/4
+d3 <- m^2 + h^2 - 5
+d3 <- if (d3 > 0) { 
+  sqrt(((m * h)^2 - 4) / d3)
+} else { 1 }
+
+F_approx_stat <- ((LR_stat_sample^(-1 / d3) - 1) * (d1 * d3 - 2 * d2)) / (m  * h)
+
+crit_F <- ((W^(-1 / d3) - 1) * (d1 * d3 - 2 * d2)) / (m  * h)
+
+hist(F_approx_stat, freq = FALSE, breaks = 40, main = "Bootstrap and F Approximation for 2nd Order Terms")
+rng <- range(F_approx_stat)
+x <- seq(rng[1], rng[2], length.out = 100)
+lines(x, df(x, m * h, d1 * d3 - 2 * d2))
+#abline(v = crit_F)
+```
+
+
+```{r}
+# Rescale the bootstrap sample to the approximate chi squared scale:
+chi_sq_approx_stat <- -(n - r - 1 - 0.5 * (m - r + q + 1)) * log(LR_stat_sample)
+
+crit_chisq  <- -(n - r - 1 - 0.5 * (m - r + q + 1)) * log(W)
+
+hist(chi_sq_approx_stat, freq = FALSE, breaks = 40, main = "Bootstrap and chi-square Approximation 2nd Order Terms")
+rng <- range(chi_sq_approx_stat)
+x <- seq(rng[1], rng[2], length.out = 100)
+lines(x, dchisq(x, m * (r - q)))
+#abline(v = crit_chisq)
+```
+
+
+# Final Model
+
+```{r}
+lm4 = lm(cbind(Z1,Z2,Z3,Z4) ~ (X1+X2+X3+X4+X5+X6) + X1:X2 + X1:X4 + X1:X5 + X1:X6 + X2:X4 + X2:X6 - 1, 
+          data = transformData)
+summary(lm4)
+```
+
+
+
+
+
+# test
+
+```{r}
+# b1 = 0.5
+# b2 = 0.3
+# b3 = 1.2
+# b4 = 1.2
+#   
+# f1 = function(a){
+#   return(b1*a + b2*(1-a))
+# }
+# 
+# f2 = function(a){
+#   return(b1*a + b2*(1-a) + b3*a*(1-a))
+# }
+# 
+# x = seq(from = 0, to = 1, by = 0.01)
+# 
+# plot(x, f1(x), type = "l", col = "black", ylim = c(0, 1.5))
+# lines(x, f2(x), col = "red")
+```
+
+
+```{r RAC, include=F}
+# Hi
+```
+
