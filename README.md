@@ -10,3 +10,5 @@ Final projects from my masters in statistics
 TODO: add individual readme's
 
 TODO: add descriptions
+
+TODO: write summary of bayes pjt
