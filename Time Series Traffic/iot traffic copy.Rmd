@@ -1,0 +1,1045 @@
+---
+title: "Traffic Dataset"
+date: "11/18/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+rm(list = ls())
+knitr::opts_chunk$set(echo = T,
+                      fig.show='hold',
+                      results='hold')
+#str(knitr::opts_chunk$get())
+set.seed(25346534)
+
+# https://r.789695.n4.nabble.com/Suppressing-output-e-g-from-cat-td859876.html
+quiet <- function(x) { 
+  sink(tempfile()) 
+  on.exit(sink()) 
+  invisible(force(x))
+}
+
+my.mse = function(pred,actual){
+  if(length(pred) != length(actual)){
+    stop("vectors arent same length")
+  }
+  
+  return(mean((pred-actual)^2))
+  
+}
+
+```
+
+
+```{r libraries, message=F, echo=F}
+library(astsa)
+
+library(fracdiff)
+
+library(tseries)
+
+library(fGarch)
+
+library(forecast)
+
+library(ggplot2)
+
+library(lubridate)
+
+library(xts)
+
+library(sarima)
+
+library(Metrics)
+```
+
+# Input Data
+
+```{r input-data,echo=F}
+traffic.data = read.csv("./archive-iot/train_ML_IOT.csv")
+
+
+#traffic.data$timeDatelt = as.POSIXlt(traffic.data$DateTime)
+
+knitr::kable(head(traffic.data,10))
+
+knitr::kable(tail(traffic.data,10))
+
+traffic.1 = traffic.data[traffic.data$Junction == 1,]
+traffic.2 = traffic.data[traffic.data$Junction == 2,]
+traffic.3 = traffic.data[traffic.data$Junction == 3,]
+traffic.4 = traffic.data[traffic.data$Junction == 4,]
+
+traffic.1$Hour = (0:(nrow(traffic.1)-1)) %% 24
+traffic.2$Hour = (0:(nrow(traffic.2)-1)) %% 24
+traffic.3$Hour = (0:(nrow(traffic.3)-1)) %% 24
+traffic.4$Hour = (0:(nrow(traffic.4)-1)) %% 24
+
+traffic.1$Date = substr(as.character(traffic.1$DateTime),1,10)
+traffic.2$Date = substr(as.character(traffic.2$DateTime),1,10)
+traffic.3$Date = substr(as.character(traffic.3$DateTime),1,10)
+traffic.4$Date = substr(as.character(traffic.4$DateTime),1,10)
+
+traffic.1$Vehicles = ts(traffic.1$Vehicles, frequency = 7*24) # weekly frequency
+traffic.2$Vehicles = ts(traffic.2$Vehicles, frequency = 7*24) # weekly frequency
+traffic.3$Vehicles = ts(traffic.3$Vehicles, frequency = 7*24) # weekly frequency
+traffic.4$Vehicles = ts(traffic.4$Vehicles, frequency = 7*24) # weekly frequency
+
+cars = data.frame(Date = traffic.1$Date, Hour = traffic.1$Hour, junction1 = traffic.1$Vehicles, junction2 = traffic.2$Vehicles, junction3 = traffic.3$Vehicles)
+
+
+
+cat("next")
+```
+
+\newpage
+
+
+```{r}
+knitr::kable(rbind(head(cars),tail(cars)))
+cat("next")
+```
+
+
+
+```{r data-table}
+# knitr::kable(head(traffic.data))
+# knitr::kable(head(traffic.data[traffic.data$Junction == 2,]))
+# knitr::kable(head(traffic.data[traffic.data$Junction == 3,]))
+ knitr::kable(head(traffic.data[traffic.data$Junction == 4,1:3]))
+
+knitr::kable(head(cbind(traffic.data[traffic.data$Junction == 1,1:3][1:10,],
+       traffic.data[traffic.data$Junction == 2,2:3][1:10,],
+       traffic.data[traffic.data$Junction == 3,2:3][1:10,])))
+
+hold = cbind(traffic.data[traffic.data$Junction == 1,1:3],
+             traffic.data[traffic.data$Junction == 2,2:3],
+             traffic.data[traffic.data$Junction == 3,2:3])
+
+cat("next")
+```
+
+
+
+# create daily cars
+
+
+```{r}
+dates = unique(cars$Date)
+cars.day = data.frame(Date = dates, Junction1 = rep(NA,length(dates)), Junction2 = rep(NA,length(dates)), Junction3 = rep(NA,length(dates)))
+
+for(i in 1:length(dates)){
+  cars.day$Junction1[i] = sum(cars$junction1[cars$Date == dates[i]])
+  cars.day$Junction2[i] = sum(cars$junction2[cars$Date == dates[i]])
+  cars.day$Junction3[i] = sum(cars$junction3[cars$Date == dates[i]])
+}
+
+cars.day$Junction1 = ts(cars.day$Junction1, frequency = 7)
+cars.day$Junction2 = ts(cars.day$Junction2, frequency = 7)
+cars.day$Junction3 = ts(cars.day$Junction3, frequency = 7)
+
+knitr::kable(rbind(head(cars.day),tail(cars.day)))
+
+plot(cars.day$Junction1, type = "n", ylim = c(0,2250), main = "daily cars at junctions", xlab = "Time (day)", ylab = "cars")
+grid()
+lines(cars.day$Junction1, col = rainbow(3)[1])
+lines(cars.day$Junction2, col = rainbow(3)[2])
+lines(cars.day$Junction3, col = rainbow(3)[3])
+legend("topleft",legend = c("Junction 1", "Junction 2", "Junction 3"), col = rainbow(3),lty = c(1,1,1))
+
+plot(cars.day$Junction1, type = "n", ylim = c(0,2250), main = "daily cars at junctions 1 & 2", xlab = "Time (day)", ylab = "cars")
+grid()
+lines(cars.day$Junction1, col = rainbow(3)[1])
+lines(cars.day$Junction2, col = rainbow(3)[2])
+legend("topleft",legend = c("Junction 1", "Junction 2"), col = rainbow(3)[1:2],lty = c(1,1))
+```
+
+
+```{r}
+acf(cars.day$Junction1, lag.max = 30, main = "Junction 1 ACF")
+pacf(cars.day$Junction1, lag.max = 30, main = "Junction 1 PACF")
+
+acf(cars.day$Junction2, lag.max = 30, main = "Junction 2 ACF")
+pacf(cars.day$Junction2, lag.max = 30, main = "Junction 2 PACF")
+
+acf(cars.day$Junction3, lag.max = 30, main = "Junction 3 ACF")
+pacf(cars.day$Junction3, lag.max = 30, main = "Junction 3 PACF")
+```
+
+
+# create traning data
+
+```{r}
+# remove last month data
+
+nday = nrow(cars.day)
+
+cars.day.train = cars.day[-((nday-29):nday),] # remove last month
+
+cars.day.train$Junction1 = ts(cars.day.train$Junction1,frequency = 7)
+cars.day.train$Junction2 = ts(cars.day.train$Junction2,frequency = 7)
+cars.day.train$Junction3 = ts(cars.day.train$Junction3,frequency = 7)
+
+```
+
+
+# auto arima
+
+## Junction 1
+
+```{r}
+(cars.day.fit1 = auto.arima(cars.day.train$Junction1,
+                           max.p = 5,
+                        max.q = 5,
+                        max.P = 5,
+                        max.Q = 5,
+                        max.order = 10,
+                        max.d = 3,
+                        max.D = 3,
+                        start.p = 1,
+                        start.q = 1,
+                        start.P = 1,
+                        start.Q = 1,
+                        nmodels = 100,
+                        approximation = T))
+
+
+#quiet(astsa::sarima(cars.day.train$Junction1, p = 1, d = 1, q = 2))
+```
+
+## Junction 2
+
+```{r}
+(cars.day.fit2 = auto.arima(cars.day.train$Junction2,
+                           max.p = 3,
+                        max.q = 3,
+                        max.P = 3,
+                        max.Q = 3,
+                        max.order = 5,
+                        max.d = 1,
+                        max.D = 1,
+                        start.p = 1,
+                        start.q = 1,
+                        start.P = 1,
+                        start.Q = 1,
+                        nmodels = 100,
+                        approximation = T))
+
+quiet(astsa::sarima(cars.day.train$Junction2, p = 3, d = 1, q = 3))
+
+
+```
+
+
+## Junction 3
+
+```{r}
+(cars.day.fit3 = auto.arima(cars.day.train$Junction3,
+                           max.p = 3,
+                        max.q = 3,
+                        max.P = 3,
+                        max.Q = 3,
+                        max.order = 5,
+                        max.d = 1,
+                        max.D = 1,
+                        start.p = 2,
+                        start.q = 2,
+                        start.P = 2,
+                        start.Q = 2,
+                        nmodels = 50,
+                        approximation = T))
+
+quiet(astsa::sarima(cars.day.train$Junction1, p = 1, d = 1, q = 1))
+
+```
+
+
+# find seasonal model
+
+## Junction 1
+
+```{r}
+cat("model 1")
+(model1.1 = quiet(astsa::sarima(cars.day.train$Junction1, p = 1, d = 1, q = 2, P = 1, D = 0, Q = 0, S = 7)))
+#AIC 6953.23
+
+# model1.forecast2 = forecast(model1.1, h = 30)
+# rmse1.1 = rmse(model1.forecast1$mean, data.1.full$J1[577:606])
+# 114.3474
+
+
+cat("model 2")
+(model1.2 = quiet(astsa::sarima(cars.day.train$Junction1, p = 1, d = 1, q = 2, P = 0, D = 0, Q = 1, S = 7)))
+#AIC 7297.4
+
+cat("model 3")
+(model1.3 = quiet(astsa::sarima(cars.day.train$Junction1, p = 1, d= 0, q = 1, P = 1, D = 1, Q = 0, S = 7)))
+#AIC 6744.5
+
+cat("model 4")
+(model1.4 = quiet(astsa::sarima(cars.day.train$Junction1, p = 1, d= 1, q = 0, P = 2, D = 1, Q = 0, S = 7)))
+#AIC 6749.55
+
+cat("model 5")
+(model1.5 = quiet(astsa::sarima(cars.day.train$Junction1, p = 1, d= 1, q = 0, P = 2, D = 0, Q = 0, S = 7)))
+#AIC 6897.51
+
+
+data.1 = data.frame(J1 = cars.day.train$Junction1[-c(1,2)],
+                    J2L1 = cars.day.train$Junction2[-c(1,578)],
+                    J2L2 = cars.day.train$Junction2[-c(577,578)],
+                    J3L1 = cars.day.train$Junction3[-c(1,578)],
+                    J3L2 = cars.day.train$Junction3[-c(577,578)])
+
+data.1.full = data.frame(J1 = cars.day$Junction1[-c(1,2)],
+                         J2L1 = cars.day$Junction2[-c(1,608)],
+                         J2L2 = cars.day$Junction2[-c(607,608)],
+                         J3L1 = cars.day$Junction3[-c(1,608)],
+                         J3L2 = cars.day$Junction3[-c(607,608)])
+
+cat("model 6")
+
+
+# sarima(data.1$J1, p = 1, d= 1, q = 0, P = 2, D = 0, Q = 0, S = 7, 
+#        xreg = cbind(data.1$J2L1,data.1$J3L1))
+
+(model1.6 = quiet(astsa::sarima(data.1$J1, 
+                              p = 1, 
+                              d= 1, 
+                              q = 0, 
+                              P = 2, 
+                              D = 0, 
+                              Q = 0, 
+                              S = 7, 
+                              xreg = data.1[,-1])))
+
+#AIC 6871.87
+
+# model1.forecast1 = forecast(model1.6, h = 30)
+# rmse1.1 = rmse(model1.forecast1$mean, data.1.full$J1[577:606])
+# 114.3474
+
+cat("model 7")
+(model1.7 = quiet(astsa::sarima(data.1$J1, 
+                              p = 1, 
+                              d= 1, 
+                              q = 1, 
+                              P = 2, 
+                              D = 0, 
+                              Q = 0, 
+                              S = 7, 
+                              xreg = data.1[,-1])))
+
+#AIC 6821.64
+
+cat("model 8")
+(model1.8 = quiet(astsa::sarima(data.1$J1, 
+                              p = 2, 
+                              d= 1, 
+                              q = 1, 
+                              P = 2, 
+                              D = 0, 
+                              Q = 0, 
+                              S = 7, 
+                              xreg = data.1[,-1])))
+
+#AIC 6802.72
+
+cat("model 9")
+(model1.9 = quiet(astsa::sarima(data.1$J1, 
+                              p = 2, 
+                              d= 0, 
+                              q = 1, 
+                              P = 2, 
+                              D = 1, 
+                              Q = 0, 
+                              S = 7, 
+                              xreg = data.1[,-1])))
+
+#AIC 6675.71
+
+cat("model 10")
+(model1.10 = quiet(astsa::sarima(data.1$J1, 
+                              p = 2, 
+                              d= 1, 
+                              q = 1, 
+                              P = 2, 
+                              D = 1, 
+                              Q = 0, 
+                              S = 7, 
+                              xreg = data.1[,-1])))
+
+#AIC 6672.2
+
+cat("model 11")
+(model1.11 = quiet(astsa::sarima(data.1$J1, 
+                              p = 3, 
+                              d= 1, 
+                              q = 1, 
+                              P = 2, 
+                              D = 1, 
+                              Q = 0, 
+                              S = 7, 
+                              xreg = data.1[,-1])))
+
+#AIC 6666.58
+
+cat("model 12")
+(model1.12 = quiet(astsa::sarima(data.1$J1, 
+                              p = 2, 
+                              d= 1, 
+                              q = 3, 
+                              P = 2, 
+                              D = 1, 
+                              Q = 0, 
+                              S = 7, 
+                              xreg = data.1[,-1])))
+
+#AIC 6666.59
+
+cat("model 13\n\n")
+(model1.13<-Arima(data.1$J1, 
+          order=c(1, 0, 1), 
+          seasonal=list(order=c(0, 1, 1), period=7), 
+          include.drift=T,
+          xreg = as.matrix(data.1[,-1])))
+
+model1.forecast1 = forecast(model1.13, h = 30, xreg = as.matrix(data.1.full[577:606,-1]))
+rmse1.1 = rmse(model1.forecast1$mean, data.1.full$J1[577:606])
+# 109.0436
+
+
+
+#AIC 6610.41
+
+cat("model 14n\n")
+(model1.14<-Arima(data.1$J1, 
+          order=c(1, 0, 1), 
+          seasonal=list(order=c(0, 1, 1), period=7), 
+          include.drift=T,
+          xreg = as.matrix(data.1[,-c(1,3,4,5)])))
+
+#AIC 6604.65
+
+
+#plot(data.1$J2L1, data.1$J1)
+
+```
+
+$$
+(1-0.822B)(1+0.82B^7)\nabla^{7}J_{1,t} = 1.906 +(1-0.401B)w_{1,t} + J_{2,t-1}
+$$
+
+## J1 model evaluation
+
+```{r}
+hist(model1.14$residuals, main = "histogram of residuals", freq = F, breaks = 35)
+lines(-400:400,dnorm(-400:400, mean = mean(model1.14$residuals), sd = sd(model1.14$residuals)), col = "red")
+
+plot(model1.14$residuals, main = "residual plot", type = "l")
+
+adf.test(model1.14$residuals, alternative = "stationary")
+
+acf(model1.14$residuals, main = "model 14 residual ACF")
+pacf(model1.14$residuals, main = "model 14 residual PACF")
+
+
+model1.forecast1 = forecast(cars.day.fit1, h = 30)
+plot(model1.forecast1, xlim = c(75,90))
+lines(cars.day$Junction1)
+
+
+model1.forecast2 = forecast(model1.14, h = 30, xreg = data.1.full$J2L1[577:606])
+plot(model1.forecast2, xlim = c(560,610))
+lines(data.1.full$J1)
+
+rmse1.1 = rmse(model1.forecast1$mean, data.1.full$J1[577:606])
+# 114.3474
+
+rmse1.2 = rmse(model1.forecast2$mean, data.1.full$J1[577:606])
+# 109.6458
+
+# mean(data.1.full$J1[577:606])
+# 1761.767
+
+
+
+```
+
+
+
+
+
+## Junction 2
+
+```{r}
+#quiet(astsa::sarima(cars.day.train$Junction2, p = 3, d = 1, q = 3))
+
+# ARIMA(2,0,1)(0,1,1)[7] with drift
+# AIC 5435.15
+
+data.2 = data.frame(J2 = cars.day.train$Junction2[-c(1,2)],
+                    J1L1 = cars.day.train$Junction1[-c(1,578)],
+                    J1L2 = cars.day.train$Junction1[-c(577,578)],
+                    J3L1 = cars.day.train$Junction3[-c(1,578)],
+                    J3L2 = cars.day.train$Junction3[-c(577,578)])
+
+data.2.full = data.frame(J2 = cars.day$Junction2[-c(1,2)],
+                         J1L1 = cars.day$Junction1[-c(1,608)],
+                         J1L2 = cars.day$Junction1[-c(607,608)],
+                         J3L1 = cars.day$Junction3[-c(1,608)],
+                         J3L2 = cars.day$Junction3[-c(607,608)])
+
+
+
+# (cars.day.fit2 = auto.arima(data.2$J2,
+#                            max.p = 3,
+#                         max.q = 3,
+#                         max.P = 3,
+#                         max.Q = 3,
+#                         max.order = 5,
+#                         max.d = 1,
+#                         max.D = 1,
+#                         start.p = 2,
+#                         start.q = 1,
+#                         start.P = 1,
+#                         start.Q = 1,
+#                         nmodels = 100,
+#                         approximation = T, 
+#                         seasonal = T))
+
+
+
+(model2.1 = Arima(data.2$J2, 
+          order=c(2, 0, 1), 
+          seasonal=list(order=c(0, 1, 1), period=7), 
+          include.drift=T,
+          xreg = as.matrix(data.2[,-c(1)])))
+#AIC 5415.31
+
+(model2.2 = Arima(data.2$J2, 
+          order=c(2, 0, 1), 
+          seasonal=list(order=c(0, 1, 1), period=7), 
+          include.drift=T,
+          xreg = as.matrix(data.2[,-c(1,3)])))
+#AIC 5413.33
+
+(model2.3 = Arima(data.2$J2, 
+          order=c(2, 0, 1), 
+          seasonal=list(order=c(0, 1, 1), period=7), 
+          include.drift=T,
+          xreg = as.matrix(data.2[,-c(1,3,5)])))
+#AIC 5411.81
+
+
+
+```
+
+## Junction 2 forecasts
+
+```{r}
+
+# ARIMA(2,0,1)(0,1,1)[7] with drift 
+model2.forecast1 = forecast(cars.day.fit2, h = 30)
+plot(model2.forecast1, xlim = c(75,90))
+lines(cars.day$Junction2)
+(rmse2.1 = rmse(model2.forecast1$mean, data.2.full[577:606,1]))
+# 43.50
+# AIC 5435.15
+
+model2.forecast2 = forecast(model2.1, h = 30, 
+                            xreg = as.matrix(data.2.full[577:606,-c(1)]))
+plot(model2.forecast2, xlim = c(560,610))
+lines(data.2.full$J2)
+(rmse2.2 = rmse(model2.forecast2$mean, data.2.full[577:606,1]))
+# 43.36
+
+model2.forecast3 = forecast(model2.3, h = 30, 
+                            xreg = as.matrix(data.2.full[577:606,-c(1,3,5)]))
+plot(model2.forecast3, xlim = c(560,610))
+lines(data.2.full$J2)
+(rmse2.2 = rmse(model2.forecast3$mean, data.2.full[577:606,1]))
+#42.88
+
+```
+
+
+## Junction 3
+
+```{r}
+#quiet(astsa::sarima(cars.day.train$Junction1, p = 1, d = 1, q = 1))
+
+#ARIMA(1,1,1)(0,0,1)[7] 
+# AIC 6878.07
+
+data.3 = data.frame(J3 = cars.day.train$Junction3[-c(1,2)],
+                    J1L1 = cars.day.train$Junction1[-c(1,578)],
+                    J1L2 = cars.day.train$Junction1[-c(577,578)],
+                    J2L1 = cars.day.train$Junction2[-c(1,578)],
+                    J2L2 = cars.day.train$Junction2[-c(577,578)])
+
+data.3.full = data.frame(J3 = cars.day$Junction3[-c(1,2)],
+                         J1L1 = cars.day$Junction1[-c(1,608)],
+                         J1L2 = cars.day$Junction1[-c(607,608)],
+                         J2L1 = cars.day$Junction2[-c(1,608)],
+                         J2L2 = cars.day$Junction2[-c(607,608)])
+
+
+# cars.day.fit3
+# ARIMA(1,1,1)(0,0,1)[7] 
+# AIC=6878.07 
+
+
+(model3.1 = Arima(data.3$J3, 
+          order=c(1, 1, 1), 
+          seasonal=list(order=c(0, 0, 1), period=7), 
+          include.drift=T,
+          xreg = as.matrix(data.3[,-c(1)]),
+          method = "ML"))
+#AIC 6857.59
+
+(model3.2 = Arima(data.3$J3, 
+          order=c(1, 1, 1), 
+          seasonal=list(order=c(0, 0, 1), period=7), 
+          include.drift=T,
+          xreg = as.matrix(data.3[,-c(1,3,5)]),
+          method = "ML"))
+#AIC 6854.43
+
+(model3.3 = Arima(data.3$J3, 
+          order=c(1, 1, 1), 
+          seasonal=list(order=c(0, 0, 1), period=7), 
+          include.drift=T,
+          xreg = as.matrix(data.3[,-c(1,2,3,5)]),
+          method = "ML"))
+#AIC 6853.18
+
+(model3.4 = Arima(data.3$J3, 
+          order=c(1, 1, 1), 
+          seasonal=list(order=c(1, 0, 1), period=7), 
+          include.drift=T,
+          #xreg = as.matrix(data.3[,-c(1,2,3,5)]),
+          method = "ML"))
+#AIC 6842.05
+
+
+```
+
+## J3 forecasting
+
+```{r}
+
+model3.forecast1 = forecast(cars.day.fit3, h = 30)
+plot(model3.forecast1, xlim = c(75,90))
+lines(cars.day$Junction3)
+(rmse3.1 = rmse(model3.forecast1$mean, data.3.full[577:606,1]))
+# 124.8629
+
+
+model3.forecast2 = forecast(model3.1, h = 30, 
+                            xreg = as.matrix(data.3.full[577:606,-c(1)]))
+plot(model3.forecast2, xlim = c(560,610))
+lines(data.3.full$J3)
+(rmse3.2 = rmse(model3.forecast2$mean, data.3.full[577:606,1]))
+# 110.0729
+
+model3.forecast3 = forecast(model3.4, h = 30)
+plot(model3.forecast3, xlim = c(560,610))
+lines(data.3.full$J3)
+(rmse3.2 = rmse(model3.forecast3$mean, data.3.full[577:606,1]))
+# 114.9068
+
+```
+
+
+
+# look at residuals for better fit
+
+```{r resid-view}
+#Hi
+```
+
+
+
+# TBATS
+```{r TBATS}
+fit <- tbats(data.1$J1, seasonal.periods = c(7))
+fore = forecast(fit, h = 30)
+plot(fore, xlim = c(75,90));
+lines(ts(data.1.full$J1,frequency = 7))
+# cat("model AIC is", fit$AIC) 
+# AIC 8661.047
+rmse.tbats = rmse(data.1.full$J1[577:606], fore$mean)
+#148.5043
+```
+
+# Log fits
+
+## J1 log
+
+```{r}
+(model1.log.1 = auto.arima(log(data.1$J1),
+                           max.p = 5,
+                        max.q = 5,
+                        max.P = 5,
+                        max.Q = 5,
+                        max.order = 10,
+                        max.d = 3,
+                        max.D = 3,
+                        start.p = 1,
+                        start.q = 1,
+                        start.P = 1,
+                        start.Q = 1,
+                        nmodels = 100,
+                        approximation = T))
+
+model1.log.forecast1 = forecast(model1.log.1, h = 30)
+plot(model3.forecast3)
+#, xlim = c(560,610)
+
+lines(log(data.1.full$J1))
+(rmse1.log.1 = rmse(model1.log.forecast1$mean, data.1.full[577:606,1]))
+#1790.762
+```
+
+
+
+```{r}
+
+cat("1\n\n\n\n")
+
+auto.arima(cars.day.train$Junction1,
+                           max.p = 5,
+                           max.q = 5,
+                           max.P = 5,
+                           max.Q = 5,
+                           max.order = 10,
+                           max.d = 3,
+                           max.D = 3,
+                           start.p = 1,
+                           start.q = 1,
+                           start.P = 1,
+                           start.Q = 1,
+                           nmodels = 100,
+                           approximation = T)
+
+cat("\n\n2\n\n\n\n")
+
+auto.arima(cars.day.train$Junction1[-c(1,2)],
+                           max.p = 5,
+                           max.q = 5,
+                           max.P = 5,
+                           max.Q = 5,
+                           max.order = 10,
+                           max.d = 3,
+                           max.D = 3,
+                           start.p = 1,
+                           start.q = 1,
+                           start.P = 1,
+                           start.Q = 1,
+                           nmodels = 100,
+                           approximation = T)
+```
+
+
+```{r}
+my.mat1 = matrix(0, nrow = 2, ncol = 3)
+colnames(my.mat1) = c("Model 1", "Model 2", "Model 3")
+rownames(my.mat1) = c("AIC","RMSE")
+
+my.mat1[1,1] = 6631.91
+my.mat1[1,2] = 6604.65
+my.mat1[1,3] = 6608.14
+my.mat1[2,1] = 114.34
+my.mat1[2,2] = 109.64
+my.mat1[2,3] = 115.10
+
+knitr::kable(my.mat1)
+
+
+my.mat2 = matrix(0, nrow = 2, ncol = 3)
+colnames(my.mat2) = c("Model 1", "Model 2", "Model 3")
+rownames(my.mat2) = c("AIC","RMSE")
+
+my.mat2[1,1] = 5435.15
+my.mat2[1,2] = 5415.31
+my.mat2[1,3] = 5411.81
+my.mat2[2,1] = 43.50
+my.mat2[2,2] = 43.36
+my.mat2[2,3] = 42.88
+
+knitr::kable(my.mat2)
+
+
+
+my.mat3 = matrix(0, nrow = 2, ncol = 3)
+colnames(my.mat3) = c("Model 1", "Model 2", "Model 3")
+rownames(my.mat3) = c("AIC","RMSE")
+
+my.mat3[1,1] = 6878.07
+my.mat3[1,2] = 6857.59
+my.mat3[1,3] = 6842.05
+my.mat3[2,1] = 124.86
+my.mat3[2,2] = 110.07
+my.mat3[2,3] = 114.90
+
+knitr::kable(my.mat3)
+
+```
+
+note plot residuals for all models
+
+# LateX
+
+## Model 1
+
+1
+
+$$
+(1-0.81B)(1+0.82B^7)(1-B^7)J_{1,t} = 2.12 + (1-0.34B)w_{1,t}
+$$
+
+```{r}
+par(mfrow = c(2,2))
+
+plot(cars.day.fit1$residuals, ylab = "residual", main = "residuals")
+hist(cars.day.fit1$residuals, freq = F, xlab = "residuals", main = "residual histogram", breaks = 30)
+lines(-600:600,dnorm(-600:600, mean = mean(cars.day.fit1$residuals), sd = sd(cars.day.fit1$residuals)), col = "red")
+acf(cars.day.fit1$residuals, lag.max = 15, main = "residual ACF")
+pacf(cars.day.fit1$residuals, lag.max = 15, main = "residual PACF")
+
+```
+
+
+2
+
+$$
+(1-0.822B)(1+0.82B^7)(1-B^7)J_{1,t} = 1.906 +(1-0.401B)w_{1,t} + 0.33J_{2,t-1}
+$$
+
+```{r}
+par(mfrow = c(2,2))
+
+plot(model1.14$residuals, ylab = "residual", main = "residuals")
+hist(model1.14$residuals, freq = F, xlab = "residuals", main = "residual histogram", breaks = 30)
+lines(-600:600,dnorm(-600:600, mean = mean(model1.14$residuals), sd = sd(model1.14$residuals)), col = "red")
+acf(model1.14$residuals, lag.max = 15, main = "residual ACF")
+pacf(model1.14$residuals, lag.max = 15, main = "residual PACF")
+
+```
+
+$$
+1=2-1
+$$
+
+## Model 2
+
+$$
+(1-1.41B+0.43B^2)(1-B^7)J_{2,t} = 0.72 + (1-0.84B)(1-0.79B^7)w_{2,t}
+$$
+
+```{r}
+par(mfrow = c(2,2))
+
+plot(cars.day.fit2$residuals, ylab = "residual", main = "residuals")
+hist(cars.day.fit2$residuals, freq = F, xlab = "residuals", main = "residual histogram", breaks = 30)
+lines(-600:600,dnorm(-600:600, mean = mean(cars.day.fit2$residuals), sd = sd(cars.day.fit2$residuals)), col = "red")
+acf(cars.day.fit2$residuals, lag.max = 15, main = "residual ACF")
+pacf(cars.day.fit2$residuals, lag.max = 15, main = "residual PACF")
+
+```
+
+$$
+(1-1.37B+0.39B^2)(1-B^7)J_{2,t} = 0.64 + (1-0.85B)(1-0.79B^7)w_{2,t} + 0.030J_{1,t-1} + 0.0019J_{1,t-2} + 0.026J_{3,t-1} + 0.0080J_{3,t-2}
+$$
+
+```{r}
+par(mfrow = c(2,2))
+
+plot(model2.1$residuals, ylab = "residual", main = "residuals")
+hist(model2.1$residuals, freq = F, xlab = "residuals", main = "residual histogram", breaks = 30)
+lines(-600:600,dnorm(-600:600, mean = mean(model2.1$residuals), sd = sd(model2.1$residuals)), col = "red")
+acf(model2.1$residuals, lag.max = 15, main = "residual ACF")
+pacf(model2.1$residuals, lag.max = 15, main = "residual PACF")
+
+```
+
+$$
+(1-1.37B+0.39B^2)(1-B^7)J_{2,t} = 0.65 + (1-0.85B)(1-0.79B^7)w_{3,t} +0.029J_{1,t-1} 0.027J_{3,t-1}
+$$
+
+```{r}
+par(mfrow = c(2,2))
+
+plot(model2.3$residuals, ylab = "residual", main = "residuals")
+hist(model2.3$residuals, freq = F, xlab = "residuals", main = "residual histogram", breaks = 30)
+lines(-600:600,dnorm(-600:600, mean = mean(model2.3$residuals), sd = sd(model2.3$residuals)), col = "red")
+acf(model2.3$residuals, lag.max = 15, main = "residual ACF")
+pacf(model2.3$residuals, lag.max = 15, main = "residual PACF")
+
+```
+
+
+## Model 3
+
+$$
+(1-0.69B)\nabla J_{3,t} = (1-0.97B)(1+0.067B^7)w_{3,t}
+$$
+
+```{r}
+par(mfrow = c(2,2))
+
+plot(cars.day.fit3$residuals, ylab = "residual", main = "residuals")
+hist(cars.day.fit3$residuals, freq = F, xlab = "residuals", main = "residual histogram", breaks = 30)
+lines(-600:600,dnorm(-600:600, mean = mean(cars.day.fit3$residuals), sd = sd(cars.day.fit3$residuals)), col = "red")
+acf(cars.day.fit3$residuals, lag.max = 15, main = "residual ACF")
+pacf(cars.day.fit3$residuals, lag.max = 15, main = "residual PACF")
+
+```
+
+$$
+(1-0.71B)\nabla J_{3,t} = 0.42+(1-1B)(1+0.065B^7)w_{3,t} -0.030J_{1,t-1} + 0.023J_{1,t-2} + 0.18J_{2,t-1} -0.10J_{2,t-2}
+$$
+
+```{r}
+par(mfrow = c(2,2))
+
+plot(model3.1$residuals, ylab = "residual", main = "residuals")
+hist(model3.1$residuals, freq = F, xlab = "residuals", main = "residual histogram", breaks = 30)
+lines(-600:600,dnorm(-600:600, mean = mean(model3.1$residuals), sd = sd(model3.1$residuals)), col = "red")
+acf(model3.1$residuals, lag.max = 15, main = "residual ACF")
+pacf(model3.1$residuals, lag.max = 15, main = "residual PACF")
+
+```
+
+$$
+(1-0.73B)(1-0.99B^7)\nabla J_{3,t} = 0.45 + (1-B)(1-0.97B^7)w_{3,t}
+$$
+
+```{r}
+par(mfrow = c(2,2))
+
+plot(model3.4$residuals, ylab = "residual", main = "residuals")
+hist(model3.4$residuals, freq = F, xlab = "residuals", main = "residual histogram", breaks = 30)
+lines(-600:600,dnorm(-600:600, mean = mean(model3.4$residuals), sd = sd(model3.4$residuals)), col = "red")
+acf(model3.4$residuals, lag.max = 15, main = "residual ACF")
+pacf(model3.4$residuals, lag.max = 15, main = "residual PACF")
+
+```
+
+
+
+# Relationships between vars in the data.numbers
+
+## J1
+
+```{r}
+par(mfrow = c(2,2))
+plot(data.1.full$J2L1,data.1.full$J1, main = "J1 | J2(t-1)", xlab = "J2(t-1)", ylab = "J1")
+abline(v = 450, col = "red", lty = 2)
+plot(data.1.full$J2L2,data.1.full$J1, main = "J1 | J2(t-2)", xlab = "J2(t-2)", ylab = "J1")
+abline(v = 450, col = "red", lty = 2)
+plot(data.1.full$J3L1,data.1.full$J1, main = "J1 | J3(t-1)", xlab = "J3(t-1)", ylab = "J1")
+plot(data.1.full$J3L2,data.1.full$J1, main = "J1 | J3(t-2)", xlab = "J3(t-2)", ylab = "J1")
+```
+
+
+```{r}
+data.1.full2 = data.1.full
+
+data.1.full2$J2L1L450 = ifelse(data.1.full$J2L1<450,data.1.full$J2L1,0)
+data.1.full2$J2L1G450 = ifelse(data.1.full$J2L1>=450,1,0)
+#data.1.full2$J2L1L4502 = ifelse(data.1.full$J2L1<450,data.1.full$J2L1,0)
+
+
+data.1.2 = data.1.full2[-c(577:606),]
+
+(model1.15 = Arima(data.1$J1, 
+          order=c(1, 0, 1), 
+          seasonal=list(order=c(0, 1, 1), period=7), 
+          include.drift=T,
+          xreg = as.matrix(data.1.2[,-c(1,2,3,4,5)])))
+
+#AIC 6608.14
+
+par(mfrow = c(2,2))
+plot(model1.15$residuals, ylab = "residual", main = "residuals")
+hist(model1.15$residuals, freq = F, xlab = "residuals", main = "residual histogram", breaks = 30)
+lines(-600:600,dnorm(-600:600, mean = mean(model1.15$residuals), sd = sd(model1.15$residuals)), col = "red")
+acf(model1.15$residuals, lag.max = 15, main = "residual ACF")
+pacf(model1.15$residuals, lag.max = 15, main = "residual PACF")
+
+
+par(mfrow = c(1,1))
+model1.forecast3 = forecast(model1.15, h = 30, xreg = as.matrix(data.1.full2[577:606,-c(1:5)]))
+plot(model1.forecast2, xlim = c(560,610))
+lines(data.1.full$J1)
+
+rmse1.3 = rmse(model1.forecast3$mean, data.1.full$J1[577:606])
+#115.1091
+
+
+
+```
+
+$$
+(1-0.80B)(1-B^7)J_{1,t} = 1.99+(1-0.36B)(1-0.81B^7)+ 0.32J_{2,t-1}(J_{2,t-1}<450) + 143.37(J_{2,t-1}\ge450)
+$$
+
+
+test $\mathbb{I}$  
+$$
+\mathbb{I}
+$$
+
+
+## J2
+
+```{r}
+par(mfrow = c(2,2))
+plot(data.2.full$J1L1,data.2.full$J2, main = "J2 | J1(t-1)", xlab = "J1(t-1)", ylab = "J2")
+plot(data.2.full$J1L2,data.2.full$J2, main = "J2 | J1(t-2)", xlab = "J1(t-2)", ylab = "J2")
+plot(data.2.full$J3L1,data.2.full$J2, main = "J2 | J3(t-1)", xlab = "J3(t-1)", ylab = "J2")
+plot(data.2.full$J3L2,data.2.full$J2, main = "J2 | J3(t-2)", xlab = "J3(t-2)", ylab = "J2")
+```
+
+
+## J3
+
+```{r}
+par(mfrow = c(2,2))
+plot(data.3.full$J1L1,data.3.full$J3, main = "J3 | J1(t-1)", xlab = "J1(t-1)", ylab = "J3")
+plot(data.3.full$J1L2,data.3.full$J3, main = "J3 | J1(t-2)", xlab = "J1(t-2)", ylab = "J3")
+plot(data.3.full$J2L1,data.3.full$J3, main = "J3 | J2(t-1)", xlab = "J2(t-1)", ylab = "J3")
+plot(data.3.full$J2L2,data.3.full$J3, main = "J3 | J2(t-2)", xlab = "J2(t-2)", ylab = "J3")
+```
+
+
+
+
+# residulal correlations
+
+```{r}
+# J1 model1.14
+# J2 model2.3
+# J3 model3.4
+
+ggCcf(model1.14$residuals, model2.3$residuals)+ggtitle("CCF Plot for Junctions 1 & 2")
+ggCcf(model1.14$residuals, model3.4$residuals)+ggtitle("CCF Plot for Junctions 1 & 3")
+ggCcf(model2.3$residuals, model3.4$residuals)+ggtitle("CCF Plot for Junctions 2 & 3")
+```
+
+$$
+(1-0.81B)(1-B^7)J_{1,t} = (1-0.34B)(1-0.82B^7)w_{1,t}
+$$
+
+$$
+(1-0.82B)(1-B^7)J_{1,t} = 1.90+ (1-0.40B)(1-0.82B^7)w_{1,t} +0.33J_{2,t-1}
+$$
+
+
+
+```{r RAC, include=F}
+#Hi
+```
+
