@@ -5,11 +5,11 @@ Final projects from my masters in statistics
 
 Data - Collected through Zillow API
 
-3. Bayes - Eliud Kipchoge’s Sub 2 Hour Marathon
+2. Bayes - Eliud Kipchoge’s Sub 2 Hour Marathon
 
 Data - TODO
 
-5. Time Series - Traffic Forecasting
+3. Time Series - Traffic Forecasting
 
 Data - https://www.kaggle.com/datasets/vetrirah/ml-iot
 
