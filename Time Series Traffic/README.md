@@ -1,2 +1,2 @@
 
-This data was collected from kaggle https://www.kaggle.com/datasets/vetrirah/ml-iot
+This data origionated from [Kaggle] (https://www.kaggle.com/datasets/vetrirah/ml-iot)
