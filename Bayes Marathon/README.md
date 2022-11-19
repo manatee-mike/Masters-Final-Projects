@@ -13,4 +13,4 @@ The independed variables of interest are:
 - region
 - sex
 
-
+A bayesian linear model was $\beta$
