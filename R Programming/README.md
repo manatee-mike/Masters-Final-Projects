@@ -33,7 +33,7 @@ There were 97 missing values in the dependnet variables. These values were imput
 
 The box cox transformation revealed an optimal value of 0.22.
 
-Models were created by estimating estimateValue, estimateValue$^{0.2}$, and log(estimateValue).
+Models were created by estimating estimateValue, estimateValue $^{0.2}$, and log(estimateValue).
 
 linear models and random forests were used to model the regression. The stepwise process was used to add and remove variables when creating the linear models for estimateValue^0.2 and log(estimateValue). Each linear model obtained an $R^2 > 0.8$.
 
