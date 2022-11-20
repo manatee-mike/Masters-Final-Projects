@@ -14,3 +14,5 @@ The independed variables of interest are:
 - sex
 
 A bayesian linear model was produced in the form $log(netTime) = \beta_0 + \beta_1\cdot log(age) + \beta_2\cdot region + \beta_3\cdot sex$.
+
+The model was produced with the stan_glm function in the rstanarm library.
