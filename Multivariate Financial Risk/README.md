@@ -20,6 +20,8 @@ The independent variables are:
 6. Small Systematic Risk
 
 
+Power transformations were performed on the dependnet variables. Correlation analyis was performed between the dependent and independent variables.
 
+Initially a multivariate linear model was created which incorperated all depend variables as well as the second and third oreder interaction terms.
 
 
