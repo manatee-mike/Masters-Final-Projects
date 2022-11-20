@@ -12,10 +12,3 @@ Final projects from my masters in statistics
 
 4. Multivariate Statistics - Financial Risk
 
-
-
-TODO: add individual readme's
-
-TODO: add descriptions
-
-TODO: write summary of bayes pjt
