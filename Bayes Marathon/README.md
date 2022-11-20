@@ -13,6 +13,16 @@ The independed variables of interest are:
 - region
 - sex
 
-A bayesian linear model was produced in the form $log(netTime) = \beta_0 + \beta_1\cdot log(age) + \beta_2\cdot region + \beta_3\cdot sex$.
+A bayesian linear model was produced in the form $log(netTime) = \beta_0 + \beta_1\cdot log(age) + \beta_2\cdot region + \beta_3\cdot sex + \epsilon$.
 
 The model was produced with the stan_glm function in the rstanarm library.
+
+The residuals closely follow a normal distribution and the assumptions for a linear model are met.
+
+6000 models were simulated and each model had a set of $\beta$'s as well as model variances ($\sigma^2$). Kipchoge was 34 years old, from the African region (Kenya), and is male. 
+The expected time for each model was computed. 
+The probability of running the marathon under 2 hours was calculated with a the assumption that errors are normally distributed, the expected times are the means, and the estimated $\sigma^2$'s. 
+The probability distribution closely followed a beta distribuion. 
+The median probability of Kipchoge running a marathon under 2 hours was estimated to be 5e-5 (0.005%).
+This highlights Kipchoge's achievement and demonstrates how difficult a sub 2 hour marathon is.
+
