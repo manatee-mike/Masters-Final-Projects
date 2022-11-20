@@ -37,7 +37,7 @@ Models were created by estimating estimateValue, estimateValue^0.2, and log(esti
 
 linear models and random forests were used to model the regression. The stepwise process was used to add and remove variables when creating the linear models for estimateValue^0.2 and log(estimateValue). Each linear model obtained an $R^2 > 0.8$.
 
-The test data was used to check to see which model produced the best predictions. Overall the random forest with the dependent variable transformation of $y = estimateValue^0.2$ produced the model with the least error.
+The test data was used to check to see which model produced the best predictions. Overall the random forest with the dependent variable transformation of $y = estimateValue^{0.2}$ produced the model with the least error.
 
 
 
